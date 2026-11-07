@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Синтаксичний аналізатор C</title>
+  <link rel="stylesheet" href="/style.css" />
+  <script src="/vendor/d3.v7.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-badge">C &rarr; Python</span>
+      <div>
+        <h1>Синтаксичний аналізатор C</h1>
+      </div>
+    </div>
+
+    <div class="topbar-controls">
+      <label class="preset-label" for="presetSelect">Приклад:</label>
+      <select id="presetSelect" class="preset-select"></select>
+      <button id="compileBtn" class="btn btn-primary">
+        <span>&#9654; Аналізувати</span>
+      </button>
+    </div>
+  </header>
+
+  <section class="metrics-strip">
+    <div class="metric-pill" id="statusPill">
+      <span class="dot"></span>
+      <span id="statusText">Готово</span>
+    </div>
+    <div class="metric-pill">Токени: <strong id="metricTokens">0</strong></div>
+    <div class="metric-pill">Вузли AST: <strong id="metricNodes">0</strong></div>
+    <div class="metric-pill">Символи: <strong id="metricSymbols">0</strong></div>
+    <div class="metric-pill">Стани LALR: <strong id="metricStates">0</strong></div>
+    <div class="metric-pill metric-ok">S/R | R/R: <strong id="metricConflicts">0 | 0</strong></div>
+  </section>
+
+  <main class="workspace">
+    <section class="pane editor-pane">
+      <div class="pane-header">
+        <span class="pane-title">Код C</span>
+        <span id="presetDesc" class="pane-hint"></span>
+      </div>
+
+      <div class="editor-container" id="editorContainer">
+        <div class="line-numbers" id="lineNumbers">1</div>
+        <div class="editor-area-wrap">
+          <div class="line-highlight" id="lineHighlight"></div>
+          <textarea id="codeEditor" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+        </div>
+      </div>
+
+      <div class="diagnostics-box">
+        <div class="diagnostics-header">
+          <span>Діагностика</span>
+          <span id="diagCount" class="badge">0</span>
+        </div>
+        <div id="diagnosticsList" class="diagnostics-list"></div>
+      </div>
+    </section>
+
+    <section class="pane output-pane">
+      <nav class="tabs-nav">
+        <button class="tab-btn active" data-tab="tab-ast">Дерево AST</button>
+        <button class="tab-btn" data-tab="tab-python">Код Python</button>
+        <button class="tab-btn" data-tab="tab-semantics">Семантика та виконання</button>
+        <button class="tab-btn" data-tab="tab-tokens">Токени</button>
+        <button class="tab-btn" data-tab="tab-lalr">Таблиця LALR(1)</button>
+      </nav>
+
+      <div class="tab-panel active" id="tab-ast">
+        <div class="ast-toolbar">
+          <div class="btn-group">
+            <button id="btnToggleLayout" class="btn btn-sm">Орієнтація: Вертикальна</button>
+            <button id="btnFitView" class="btn btn-sm">Масштаб за вікном</button>
+            <button id="btnExpandAll" class="btn btn-sm">Розгорнути все</button>
+            <button id="btnCollapseDeep" class="btn btn-sm">Згорнути рівні</button>
+          </div>
+          <div class="btn-group">
+            <button id="btnExportSvg" class="btn btn-sm">Експорт SVG</button>
+          </div>
+        </div>
+
+        <div class="ast-canvas-wrapper" id="astCanvasWrapper">
+          <svg id="astSvg"></svg>
+
+          <div class="ast-empty-banner" id="astEmptyBanner" hidden>
+            AST не побудовано через помилки розбору.
+          </div>
+
+          <div class="ast-legend">
+            <div class="legend-item"><span class="swatch cat-program"></span>Функції</div>
+            <div class="legend-item"><span class="swatch cat-declaration"></span>Оголошення</div>
+            <div class="legend-item"><span class="swatch cat-control"></span>Керування</div>
+            <div class="legend-item"><span class="swatch cat-expression"></span>Вирази</div>
+            <div class="legend-item"><span class="swatch cat-literal"></span>Літерали / ID</div>
+          </div>
+
+          <aside class="node-inspector" id="nodeInspector">
+            <div class="inspector-title">Вузол AST</div>
+            <div class="inspector-body" id="inspectorBody">Оберіть вузол</div>
+          </aside>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-python">
+        <div class="subpanel-toolbar">
+          <span class="subpanel-label">Згенерований код Python</span>
+          <div class="btn-group">
+            <button id="btnCopyPython" class="btn btn-sm">Копіювати</button>
+            <button id="btnDownloadPython" class="btn btn-sm">Завантажити .py</button>
+          </div>
+        </div>
+        <pre class="code-output" id="pythonCodeOutput"></pre>
+
+        <div class="console-card">
+          <div class="console-header">Вивід Python (stdout)</div>
+          <pre class="console-output" id="pythonStdoutOutput"></pre>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-semantics">
+        <div class="split-vertical">
+          <div class="card">
+            <div class="card-header">
+              <span>Інтерпретація AST</span>
+              <span id="astStepsBadge" class="badge">0 кроків</span>
+            </div>
+            <div class="exec-grid">
+              <div>
+                <div class="mini-label">Вивід (stdout):</div>
+                <pre class="console-output" id="astStdoutOutput"></pre>
+              </div>
+              <div>
+                <div class="mini-label">Змінні та return:</div>
+                <pre class="console-output" id="astVarsOutput"></pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="card table-card">
+            <div class="card-header">
+              <span>Таблиця символів</span>
+            </div>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Ім'я</th>
+                    <th>Вид</th>
+                    <th>Тип</th>
+                    <th>Область</th>
+                    <th>const</th>
+                    <th>Рядок</th>
+                  </tr>
+                </thead>
+                <tbody id="symbolsTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-tokens">
+        <div class="subpanel-toolbar">
+          <span class="subpanel-label" id="preprocessorInfo">Препроцесор: —</span>
+          <input type="search" id="tokenSearch" class="search-input" placeholder="Пошук токена..." />
+        </div>
+        <div class="table-scroll full-height">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>№</th>
+                <th>Тип</th>
+                <th>Лексема</th>
+                <th>Рядок</th>
+                <th>Стовпець</th>
+              </tr>
+            </thead>
+            <tbody id="tokensTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-lalr">
+        <div class="subpanel-toolbar">
+          <span class="subpanel-label" id="lalrSummaryLabel">Таблиця станів автомата (parser.out)</span>
+        </div>
+        <pre class="code-output" id="lalrStatesOutput"></pre>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
